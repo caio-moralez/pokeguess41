@@ -340,9 +340,10 @@ app.post('/api/auth/delete', csrfProtection, ensureAuthenticatedApi, async (req,
 if (NODE_ENV === 'production') {
   const staticPath = path.join(__dirname, 'client', 'dist');
   app.use(express.static(staticPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(staticPath, 'index.html'));
-  });
+  app.use((req, res) => {
+  res.sendFile(path.join(__dirname, 'client/dist', 'index.html'));
+});
+
 }
 
 // global error handler
