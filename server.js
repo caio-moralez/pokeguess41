@@ -27,13 +27,11 @@ app.use(helmet({ contentSecurityPolicy: false }));
 
 // cors
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (origin === FRONTEND_ORIGIN) return callback(null, true);
-    return callback(new Error('CORS policy: origin not allowed'), false);
-  },
-  credentials: true
+  origin: FRONTEND_ORIGIN,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"]
 }));
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -45,8 +43,8 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: NODE_ENV === 'production',
-    sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: true,
+    sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 24 // 1 day
   }
 }));
