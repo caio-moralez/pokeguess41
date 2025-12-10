@@ -223,6 +223,12 @@ app.post('/api/auth/logout', (req, res, next) => {
           errors: [{ msg: 'Session destroy failed' }]
         });
       }
+      res.clearCookie("connect.sid", {
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax"
+      })
 
       
       return res.json({ ok: true });
@@ -333,6 +339,10 @@ app.post('/api/auth/delete', csrfProtection, ensureAuthenticatedApi, async (req,
       }
       req.session.destroy((err) => {
         if (err) console.error('Session destroy after delete error:', err);
+        res.clearCookie("connect.sid", 
+          { path: "/", httpOnly: true, secure: true, sameSite: "lax" });
+res.clearCookie("connect.sid", { path: "/", httpOnly: true, secure: true, sameSite: "lax" });
+
         return res.json({ ok: true });
       });
     });

@@ -5,12 +5,14 @@ import { useNotification } from "../context/notificationContext";
 
 export default function DeleteAccount() {
   const { addNotification } = useNotification();
-  const { authenticated } = useAuth(); 
+  const { authenticated, setAuthenticated } = useAuth(); 
   const [csrfToken, setCsrfToken] = useState("");
   const [formData, setFormData] = useState({
     password: "",
     password2: "",
   });
+  
+
 
   const navigate = useNavigate();
 
@@ -63,8 +65,7 @@ export default function DeleteAccount() {
         }
         return;
       }
-
-      // sucesso → redirecionar para home ou logout
+      setAuthenticated(false);
       navigate("/");
 
     } catch (error) {
