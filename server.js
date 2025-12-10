@@ -13,6 +13,7 @@ const { body, validationResult } = require('express-validator');
 const cookieParser = require('cookie-parser');
 const { pool } = require('./dbConfig');
 const initializePassport = require('./passportConfig');
+const pgSession = require("connect-pg-simple")(session)
 
 initializePassport(passport);
 
@@ -22,15 +23,8 @@ const PORT = process.env.PORT || 4000;
 const NODE_ENV = process.env.NODE_ENV ;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 
-// middleware
-app.use(helmet({ contentSecurityPolicy: false }));
-
 // cors
-app.use(cors({
-  origin: FRONTEND_ORIGIN,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"]
-}));
+app.use(cors());
 
 app.set('trust proxy', 1);
 app.use(cookieParser());
@@ -40,6 +34,11 @@ app.use(express.urlencoded({ extended: false }));
 
 // session
 app.use(session({
+  store: new pgSession({
+    pool:pool,
+    tableName: "session",
+    createTableIfMissing: true
+  }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -54,6 +53,8 @@ app.use(session({
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+app.use(helmet({ contentSecurityPolicy: false }));
 
 
 const csrfProtection = csrf({
