@@ -5,6 +5,9 @@ import { useNotification } from "../context/notificationContext";
 export default function Register() {
   const [csrfToken, setCsrfToken] = useState("");
 const { addNotification} = useNotification()
+ const navigate = useNavigate();
+const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   const [formData, setFormData] = useState({
     name: "",
@@ -13,8 +16,7 @@ const { addNotification} = useNotification()
     password2: "",
   });
 
-  const navigate = useNavigate();
-
+ 
  //csrf token
   useEffect(() => {
     fetch("/api/csrf-token", {
@@ -31,6 +33,9 @@ const { addNotification} = useNotification()
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     
 
     try {
@@ -62,6 +67,8 @@ const { addNotification} = useNotification()
 
     } catch (error) {
       addNotification({ type: "error", message: "Server error, try again" });;
+    }finally{
+      setTimeout(() => setIsSubmitting(false), 1500)
     }
   }
 
@@ -117,7 +124,13 @@ const { addNotification} = useNotification()
         </div>
 
         <div>
-          <input type="submit" value="Register"  className="pg-btn-action"/>
+             <button
+            type="submit"
+            className="pg-btn-action"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Loading..." : "Register"}
+          </button>
         </div>
 
       </form>

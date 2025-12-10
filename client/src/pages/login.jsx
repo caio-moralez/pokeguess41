@@ -7,6 +7,7 @@ export default function Login() {
   const { addNotification } = useNotification();
   const navigate = useNavigate();
   const { setAuthenticated } = useAuth(); 
+ const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [csrfToken, setCsrfToken] = useState("");
   const [form, setForm] = useState({ email: "", password: "" });
@@ -32,6 +33,9 @@ export default function Login() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+     if (isSubmitting) return; 
+  setIsSubmitting(true);
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -63,6 +67,8 @@ export default function Login() {
     } catch (err) {
       console.error(err);
       addNotification({ type: "error", message: "Server error, try again" });
+    }finally {
+      setTimeout(() => setIsSubmitting(false), 1500)
     }
   }
 
@@ -94,7 +100,12 @@ export default function Login() {
         </div>
 
         <div>
-          <button type="submit" className="pg-btn-action">Login</button>
+          <button type="submit"
+           className="pg-btn-action"
+           disabled={isSubmitting}
+           >
+            {isSubmitting ? "Loading ..." : "Login"}
+            </button>
         </div>
       </form>
     </div>
