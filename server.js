@@ -10,7 +10,7 @@ const session = require('express-session');
 const passport = require('passport');
 const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
-
+const cookieParser = require('cookie-parser');
 const { pool } = require('./dbConfig');
 const initializePassport = require('./passportConfig');
 
@@ -32,6 +32,8 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE"]
 }));
 
+app.set('trust proxy', 1);
+app.use(cookieParser());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -109,7 +111,13 @@ function ensureAuthenticatedApi(req, res, next) {
 
 // endpoint csrf token 
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error before csrf token:', err);
+      return res.status(500).json({ ok: false });
+    }
+    res.json({ csrfToken: req.csrfToken() });
+  });
 });
 
 //register
