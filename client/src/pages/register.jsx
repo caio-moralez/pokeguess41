@@ -20,7 +20,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
  //csrf token
   useEffect(() => {
     fetch("/api/csrf-token", {
-      credentials: "include", // send cookies
+      credentials: "include", 
     })
       .then((res) => res.json())
       .then((data) => setCsrfToken(data.csrfToken))

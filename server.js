@@ -21,7 +21,6 @@ const app = express();
 
 const PORT = process.env.PORT || 4000;
 const NODE_ENV = process.env.NODE_ENV ;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 
 // cors
 app.use(cors());
@@ -58,7 +57,7 @@ app.use(helmet({ contentSecurityPolicy: false }));
 
 
 const csrfProtection = csrf({
-  cookie: false // using session-based tokens
+  cookie: false 
 });
 
 // validation

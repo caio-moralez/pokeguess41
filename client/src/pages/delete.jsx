@@ -48,7 +48,7 @@ export default function DeleteAccount() {
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "CSRF-Token": csrfToken, // enviar CSRF no header
+          "CSRF-Token": csrfToken, 
         },
         body: JSON.stringify(formData),
       });

@@ -20,9 +20,7 @@ export default function PokemonGame({ csrfToken, startingScore }) {
   const firstLoadRef = useRef(false);
 
 
-  
-
-  // --- Pokémon list ---
+  //list
   useEffect(() => {
     async function loadList() {
       try {
@@ -37,7 +35,6 @@ export default function PokemonGame({ csrfToken, startingScore }) {
     loadList();
   }, []);
 
-  // --- Pixelate image ---
   function drawPixelated(img, pixelSize = 50) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -68,7 +65,6 @@ export default function PokemonGame({ csrfToken, startingScore }) {
     ctx.imageSmoothingEnabled = false;
   }
 
-  // --- Start new Pokémon ---
   async function newPokemon() {
     setGameReady(false);
     setLoadingPokemon(true);
@@ -78,7 +74,7 @@ export default function PokemonGame({ csrfToken, startingScore }) {
     const id = Math.floor(Math.random() * 386) + 1;
 
     try {
-      // Pokémon API
+      // API
       const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
       const data = await res.json();
       const name = data.name;
@@ -108,7 +104,6 @@ export default function PokemonGame({ csrfToken, startingScore }) {
 
       img.src = imgUrl;
 
-      // --- Notify backend ---
       const serverRes = await fetch("/api/game/start", {
         method: "POST",
         credentials: "include", 
@@ -129,12 +124,10 @@ export default function PokemonGame({ csrfToken, startingScore }) {
     }
   }
 
-  // --- Enable game when ready ---
   useEffect(() => {
     if (imageLoaded && serverReady) setGameReady(true);
   }, [imageLoaded, serverReady]);
 
-  // --- Submit guess ---
   async function submitGuess() {
     if (!gameReady) return;
 
@@ -174,7 +167,6 @@ export default function PokemonGame({ csrfToken, startingScore }) {
     }
   }
 
-  // --- Autocomplete ---
   function handleInput(e) {
     const value = e.target.value.toLowerCase();
     if (!value) {
@@ -210,7 +202,7 @@ useEffect(() => {
   if (!firstLoadRef.current && csrfToken) {
     firstLoadRef.current = true;
     if (startingScore != null) {
-      setScore(startingScore); // garante score inicial
+      setScore(startingScore);
     }
     newPokemon();
   }
@@ -219,7 +211,6 @@ useEffect(() => {
   return (
   <div className="pg-game-wrapper">
 
-    {/* CANVAS COM BORDA RETRÔ */}
     <div className="pg-canvas-box">
       <canvas
         ref={canvasRef}
@@ -229,14 +220,12 @@ useEffect(() => {
       />
     </div>
 
-    {/* STATUS */}
     <p className="pg-status-text">
       {loadingPokemon ? "Loading Pokémon..." : result}
     </p>
 
     <p className="pg-score">Score: {score}</p>
 
-    {/* SEARCH + AUTOCOMPLETE */}
     <div className="pg-search-box-wrapper">
       <input
         className="pg-search-box"
@@ -257,7 +246,6 @@ useEffect(() => {
       )}
     </div>
 
-    {/* BOTÕES */}
     <div className="pg-buttons-row">
       <button
         className="pg-btn-action"

@@ -60,8 +60,6 @@ export default function Dashboard() {
     loadData();
   }, [navigate]);
 
-
-//render
   if (loading || !csrfToken )  return <p>Loading...</p> ; 
 
   const displayName =

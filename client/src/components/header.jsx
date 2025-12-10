@@ -8,7 +8,6 @@ export default function Header() {
   const [csrfToken, setCsrfToken] = useState("");
   const navigate = useNavigate();
 
-  // Carregar CSRF
   useEffect(() => {
     fetch("/api/csrf-token", { credentials: "include" })
       .then((res) => res.json())
@@ -20,19 +19,17 @@ export default function Header() {
   }
 
   async function handleLogout() {
-    await logout(csrfToken); // <<< LOGOUT REAL
+    await logout(csrfToken); 
     setOpen(false);
-    navigate("/"); // <<< REDIRECIONA PARA HOME
+    navigate("/"); 
   }
 
   return (
     <header className="pg-header">
       <div className="pg-header-inner">
 
-        {/* Logo */}
         <Link to="/" className="pg-logo">Pokeguess 41</Link>
 
-        {/* Menu Button + Dropdown */}
         <div className="pg-menu-wrapper">
           <button className="pg-menu-btn" onClick={toggleMenu}>
             Menu
@@ -41,7 +38,6 @@ export default function Header() {
           {open && (
             <div className="pg-dropdown">
 
-              {/* Menu para visitantes */}
               {!authenticated && (
                 <>
                   <Link to="/" onClick={() => setOpen(false)}>Home</Link>
@@ -50,7 +46,6 @@ export default function Header() {
                 </>
               )}
 
-              {/* Menu para logados */}
               {authenticated && (
                 <>
                   <Link to="/" onClick={() => setOpen(false)}>Home</Link>
