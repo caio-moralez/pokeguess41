@@ -6,26 +6,9 @@ import { useNavigate } from "react-router-dom";
 export default function Login() {
   const { addNotification } = useNotification();
   const navigate = useNavigate();
-  const { setAuthenticated } = useAuth(); 
- const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [csrfToken, setCsrfToken] = useState("");
+  const { setAuthenticated, setAccessToken } = useAuth(); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
-
-  useEffect(() => {
-    async function loadCsrf() {
-      try {
-        const res = await fetch("/api/csrf-token", {
-          credentials: "include"});
-        const data = await res.json();
-        setCsrfToken(data.csrfToken || "");
-      } catch (err) {
-        console.error(err);
-        addNotification({ type: "error", message: "Failed to load CSRF token" });
-      }
-    }
-    loadCsrf();
-  }, [addNotification]);
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -33,18 +16,13 @@ export default function Login() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-
-     if (isSubmitting) return; 
-  setIsSubmitting(true);
+    if (isSubmitting) return; 
+    setIsSubmitting(true);
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "CSRF-Token": csrfToken,
-        },
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
 
@@ -61,14 +39,16 @@ export default function Login() {
         return;
       }
 
+      setAccessToken(data.accessToken);
       setAuthenticated(true);
       addNotification({ type: "success", message: "Login successful!" });
       navigate("/dashboard");
+
     } catch (err) {
       console.error(err);
       addNotification({ type: "error", message: "Server error, try again" });
-    }finally {
-      setTimeout(() => setIsSubmitting(false), 1500)
+    } finally {
+      setTimeout(() => setIsSubmitting(false), 1500);
     }
   }
 
@@ -100,12 +80,9 @@ export default function Login() {
         </div>
 
         <div>
-          <button type="submit"
-           className="pg-btn-action"
-           disabled={isSubmitting}
-           >
+          <button type="submit" className="pg-btn-action" disabled={isSubmitting}>
             {isSubmitting ? "Loading ..." : "Login"}
-            </button>
+          </button>
         </div>
       </form>
     </div>

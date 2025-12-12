@@ -1,31 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useNotification } from "../context/notificationContext";
 
 export default function Register() {
-  const [csrfToken, setCsrfToken] = useState("");
-const { addNotification} = useNotification()
- const navigate = useNavigate();
-const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const { addNotification } = useNotification();
+  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
-    password2: "",
+    passwordMatchingCheck: "",
   });
-
- 
- //csrf token
-  useEffect(() => {
-    fetch("/api/csrf-token", {
-      credentials: "include", 
-    })
-      .then((res) => res.json())
-      .then((data) => setCsrfToken(data.csrfToken))
-      .catch((err) => console.error("Error loading CSRF:", err));
-  }, []);
 
   function handleChange(e) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -36,39 +23,47 @@ const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (isSubmitting) return;
     setIsSubmitting(true);
-    
+
+    if (formData.password !== formData.passwordMatchingCheck) {
+      addNotification({ type: "error", message: "Passwords do not match" });
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "CSRF-Token": csrfToken, 
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-      if (data.errors && Array.isArray(data.errors)) {
+        if (data.errors && Array.isArray(data.errors)) {
           data.errors.forEach(err =>
             addNotification({ type: "error", message: err.msg })
           );
         } else {
-          addNotification({ type: "error", message: "Registered Failed !" });
+          addNotification({ type: "error", message: "Registration failed" });
         }
         return;
       }
 
-     addNotification({ type: "success", message:  "Account created successfully!" });;
+      addNotification({ type: "success", message: "Account created successfully!" });
       setTimeout(() => navigate("/login"), 1200);
 
     } catch (error) {
-      addNotification({ type: "error", message: "Server error, try again" });;
-    }finally{
-      setTimeout(() => setIsSubmitting(false), 1500)
+      console.error(error);
+      addNotification({ type: "error", message: "Server error, try again" });
+    } finally {
+      setTimeout(() => setIsSubmitting(false), 1500);
     }
   }
 
@@ -76,9 +71,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
     <div className="container">
       <h1>Register</h1>
 
-
       <form onSubmit={handleSubmit}>
-       
         <div>
           <input
             type="text"
@@ -115,24 +108,19 @@ const [isSubmitting, setIsSubmitting] = useState(false);
         <div>
           <input
             type="password"
-            name="password2"
+            name="passwordMatchingCheck"
             placeholder="Confirm password"
             required
-            value={formData.password2}
+            value={formData.passwordMatchingCheck}
             onChange={handleChange}
           />
         </div>
 
         <div>
-             <button
-            type="submit"
-            className="pg-btn-action"
-            disabled={isSubmitting}
-          >
+          <button type="submit" className="pg-btn-action" disabled={isSubmitting}>
             {isSubmitting ? "Loading..." : "Register"}
           </button>
         </div>
-
       </form>
     </div>
   );

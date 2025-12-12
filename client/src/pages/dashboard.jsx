@@ -1,66 +1,55 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PokemonGame from "../components/PokemonGame";
-
+import { useAuth } from "../context/authcontext";
 
 export default function Dashboard() {
-  const [csrfToken, setCsrfToken] = useState("");
-  const [user, setUser] = useState(null); 
-  const [score, setScore] = useState(null);
-  const [loading, setLoading] = useState(true); 
-
+  const { accessToken, authenticated } = useAuth();
+  const [user, setUser] = useState(null);
+  const [score, setScore] = useState(0);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-
-
   useEffect(() => {
+    if (!authenticated || !accessToken) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     async function loadData() {
       try {
-        const userRes = await fetch("/api/dashboard", {
-          credentials: "include",
+        const res = await fetch("/api/dashboard", {
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+          },
         });
 
-        
-
-        if (!userRes.ok) {
+        if (!res.ok) {
           navigate("/login", { replace: true });
           return;
         }
 
-        const userData = await userRes.json();
+        const data = await res.json();
 
-        if (!userData.ok) {
+        if (!data.ok) {
           navigate("/login", { replace: true });
           return;
         }
-        
-        setUser(userData.user?.name || "User");
-           setScore(userData.score);
-        
-        const csrfRes = await fetch("/api/csrf-token", {
-          credentials: "include",
-        });
 
-        if (csrfRes.ok) {
-          const csrfData = await csrfRes.json();
-          setCsrfToken(csrfData.csrfToken || "");
-        } else {
-          console.error("not possible recieve CSRF token");
-        }
-     
+        setUser(data.user?.name || "User");
+        setScore(data.score || 0);
       } catch (err) {
         console.error("Erro no dashboard:", err);
         navigate("/login", { replace: true });
-      }finally {
-  setLoading(false);
-}
-
+      } finally {
+        setLoading(false);
+      }
     }
 
     loadData();
-  }, [navigate]);
+  }, [accessToken, authenticated, navigate]);
 
-  if (loading || !csrfToken )  return <p>Loading...</p> ; 
+  if (loading) return <p>Loading...</p>;
 
   const displayName =
     typeof user === "string" && user.length > 0
@@ -68,19 +57,12 @@ export default function Dashboard() {
       : "User";
 
   return (
-  <div className="pg-dashboard-wrapper">
-
-
-    <div className="pg-dashboard-content">
-      <h1>Hello {displayName}</h1>
-
-      {!loading && csrfToken && (
-        <PokemonGame csrfToken={csrfToken} startingScore={score} />
-      )}
-
-      <hr />
+    <div className="pg-dashboard-wrapper">
+      <div className="pg-dashboard-content">
+        <h1>Hello {displayName}</h1>
+        <PokemonGame startingScore={score} />
+        <hr />
+      </div>
     </div>
-
-  </div>
-);
+  );
 }

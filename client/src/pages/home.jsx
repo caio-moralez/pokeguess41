@@ -9,17 +9,14 @@ export default function Home() {
   useEffect(() => {
     async function loadLeaderboard() {
       try {
-        const res = await fetch("/api/leaderboard", {
-        });
+        const res = await fetch("/api/leaderboard");
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
 
-        if (data.rows) {
+        if (data.ok && Array.isArray(data.rows)) {
           setLeaderboard(data.rows);
-        } else if (Array.isArray(data)) {
-          setLeaderboard(data);
         } else {
           setLeaderboard([]);
         }
@@ -60,13 +57,13 @@ export default function Home() {
           <tbody>
             {leaderboard.map((player, index) => (
               <motion.tr
-                key={index}
+                key={player.nickname}
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.07 }}
               >
                 <td>#{index + 1}</td>
-                <td>{player.name}</td>
+                <td>{player.nickname}</td>
                 <td>{player.score}</td>
               </motion.tr>
             ))}
@@ -75,7 +72,7 @@ export default function Home() {
       )}
 
       {!loading && !error && leaderboard.length === 0 && (
-        <p>No score at the moment come back soon...</p>
+        <p>No score at the moment, come back soon...</p>
       )}
     </div>
   );

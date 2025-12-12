@@ -4,47 +4,54 @@ const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [authenticated, setAuthenticated] = useState(false);
+  const [accessToken, setAccessToken] = useState(null);
 
   useEffect(() => {
-async function checkAuth() {
-  try {
-    const res = await fetch("/api/dashboard", {
-      credentials: "include",
-    });
+    async function checkAuth() {
+      if (!accessToken) {
+        setAuthenticated(false);
+        return;
+      }
 
-    if (res.ok) {
-      setAuthenticated(true);
-    } else {
-      setAuthenticated(false);
+      try {
+        const res = await fetch("/api/dashboard", {
+          headers: { "Authorization": `Bearer ${accessToken}` },
+        });
+
+        if (res.ok) {
+          setAuthenticated(true);
+        } else {
+          setAuthenticated(false);
+          setAccessToken(null);
+        }
+      } catch {
+        setAuthenticated(false);
+        setAccessToken(null);
+      }
     }
 
-  } catch {
-    setAuthenticated(false);
-  }
-}
-
     checkAuth();
-  }, []);
+  }, [accessToken]);
 
-  async function logout(csrfToken) {
+  // Logout
+  async function logout() {
     try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "CSRF-Token": csrfToken,
-        },
-      });
-
+      if (accessToken) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${accessToken}` },
+        });
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
       setAuthenticated(false);
-    } catch {
-      setAuthenticated(false);
+      setAccessToken(null);
     }
   }
 
   return (
-    <AuthContext.Provider value={{ authenticated, setAuthenticated, logout }}>
+    <AuthContext.Provider value={{ authenticated, setAuthenticated, accessToken, setAccessToken, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -53,3 +60,4 @@ async function checkAuth() {
 export function useAuth() {
   return useContext(AuthContext);
 }
+

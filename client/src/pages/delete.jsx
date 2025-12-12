@@ -5,34 +5,20 @@ import { useNotification } from "../context/notificationContext";
 
 export default function DeleteAccount() {
   const { addNotification } = useNotification();
-  const { authenticated, setAuthenticated } = useAuth(); 
-  const [csrfToken, setCsrfToken] = useState("");
+  const { authenticated, setAuthenticated, accessToken } = useAuth(); 
   const [formData, setFormData] = useState({
     password: "",
-    password2: "",
+    passwordMatchingCheck: "",
   });
-  
-
 
   const navigate = useNavigate();
 
-    useEffect(() => {
+  // redirect if not authenticated 
+  useEffect(() => {
     if (authenticated === false) {
       navigate("/login");
     }
   }, [authenticated, navigate]);
-
-
-
-
-  useEffect(() => {
-    fetch("/api/csrf-token", {
-      credentials: "include",
-    })
-      .then((res) => res.json())
-      .then((data) => setCsrfToken(data.csrfToken))
-      .catch((err) => console.error("Error loading CSRF:", err));
-  }, []);
 
   function handleChange(e) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -40,52 +26,54 @@ export default function DeleteAccount() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-   
+
+    // checking mach of passwords
+    if (formData.password !== formData.passwordMatchingCheck) {
+      addNotification({ type: "error", message: "Passwords do not match" });
+      return;
+    }
 
     try {
       const res = await fetch("/api/auth/delete", {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "CSRF-Token": csrfToken, 
+          "Authorization": `Bearer ${accessToken}`, 
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ password: formData.password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-       if (data.errors && Array.isArray(data.errors)) {
+        if (data.errors && Array.isArray(data.errors)) {
           data.errors.forEach(err =>
             addNotification({ type: "error", message: err.msg })
           );
         } else {
-          addNotification({ type: "error", message: "Not possible delete account" });
+          addNotification({ type: "error", message: "Unable to delete account" });
         }
         return;
       }
+
+      addNotification({ type: "success", message: "Account deleted successfully" });
       setAuthenticated(false);
       navigate("/");
 
     } catch (error) {
-    addNotification({ type: "error", message: "Server connection error" });
+      addNotification({ type: "error", message: "Server connection error" });
     }
   }
 
   return (
     <div>
       <h2>Delete Account</h2>
-
       <p>
         This action is <strong>PERMANENT</strong>.<br />
         All your data and score will be removed.
       </p>
 
-      
       <form onSubmit={handleSubmit}>
-      
-
         <label>Password</label>
         <br />
         <input
@@ -101,9 +89,9 @@ export default function DeleteAccount() {
         <br />
         <input
           type="password"
-          name="password2"
+          name="passwordMatchingCheck"
           required
-          value={formData.password2}
+          value={formData.passwordMatchingCheck}
           onChange={handleChange}
         />
         <br /><br />

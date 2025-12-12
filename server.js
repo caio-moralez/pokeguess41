@@ -1,380 +1,324 @@
-
 require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
-const csrf = require('csurf');
-const session = require('express-session');
-const passport = require('passport');
-const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
-const cookieParser = require('cookie-parser');
-const { pool } = require('./dbConfig');
-const initializePassport = require('./passportConfig');
-const pgSession = require("connect-pg-simple")(session)
+const redis = require('./redisClient');
 
-initializePassport(passport);
+// AWS COGNITO SDK IMPORTS
+const {
+  CognitoIdentityProviderClient,
+  SignUpCommand,
+  InitiateAuthCommand,
+  AdminDeleteUserCommand,
+  GlobalSignOutCommand
+} = require('@aws-sdk/client-cognito-identity-provider');
+
+// Midleware to protect routes that require authentication
+const requireAuth = require('./authMiddleware');
+// Database queries 
+const db = require('./queries'); 
 
 const app = express();
 
 const PORT = process.env.PORT || 4000;
-const NODE_ENV = process.env.NODE_ENV ;
+const NODE_ENV = process.env.NODE_ENV;
 
-// cors
-app.use(cors());
+// Cognito Client
+const cognito = new CognitoIdentityProviderClient({
+  region: process.env.COGNITO_REGION
+});
 
-app.set('trust proxy', 1);
-app.use(cookieParser());
+
+//GLOBAL MIDDLEWARES
+app.use(cors({
+  origin: process.env.FRONTEND_ORIGIN || true,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  credentials: false
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-
-// session
-app.use(session({
-  store: new pgSession({
-    pool:pool,
-    tableName: "session",
-    createTableIfMissing: true
-  }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 24 // 1 day
-  }
-}));
-
-
-app.use(passport.initialize());
-app.use(passport.session());
-
 app.use(helmet({ contentSecurityPolicy: false }));
 
-
-const csrfProtection = csrf({
-  cookie: false 
-});
-
-// validation
-const registerValidation = [
-  body("name")
-    .trim()
-    .notEmpty()
-    .withMessage("Name is required")
-    .matches(/^[^<>\\/]+$/)
-    .withMessage("Name contains invalid characters")
-    .escape(),
-
+// VALIDATION RULES
+const validationCommon = [
   body("email")
-    .isEmail()
-    .withMessage("Please enter a valid email")
-    .matches(/^[^<>\\/]+$/)
-    .withMessage("Email contains invalid characters")
+    .isEmail().withMessage("Please enter a valid email")
     .normalizeEmail(),
 
   body("password")
-    .isLength({ min: 8 })
-    .withMessage("Password must be at least 8 characters"),
+    .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
+    .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter")
+    .matches(/\d/).withMessage("Password must contain at least one number")
+    .matches(/[!@#$%^&*(),.?":{}|<>]/).withMessage("Password must contain at least one special character")
+];
+
+const registerValidation = [
+  body("name")
+    .trim()
+    .notEmpty().withMessage("Name is required")
+    .matches(/^[a-zA-ZÀ-ÿ\s'-]+$/).withMessage("Name contains invalid characters"),
+
+  ...validationCommon,
 
   body("password2")
     .custom((value, { req }) => {
-      if (value !== req.body.password) {
+      if (value !== req.body.password)
         throw new Error("Passwords do not match");
-      }
       return true;
     })
 ];
 
-const loginValidation = [
-  body("email")
-    .trim()
-    .isEmail()
-    .withMessage("Please enter a valid email")
-    .normalizeEmail(),
+const loginValidation = validationCommon;
 
-  body("password")
-    .trim()
-    .notEmpty()
-    .withMessage("Password is required")
-];
-
-function ensureAuthenticatedApi(req, res, next) {
-  if (req.isAuthenticated && req.isAuthenticated()) return next();
-  return res.status(401).json({ ok: false,
-     errors: [{msg: 'Unauthorized' }]});
-}
-
-// endpoint csrf token 
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  req.session.save((err) => {
-    if (err) {
-      console.error('Session save error before csrf token:', err);
-      return res.status(500).json({ ok: false });
-    }
-    res.json({ csrfToken: req.csrfToken() });
-  });
-});
-
-//register
-app.post('/api/auth/register', csrfProtection, registerValidation, async (req, res) => {
+// USER REGISTER
+app.post('/api/auth/register', registerValidation, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ ok: false, errors: errors.array().map(err => ({msg: err.msg})) });
+    return res.status(400).json({
+      ok: false,
+      errors: errors.array().map(err => ({ msg: err.msg }))
+    });
   }
 
   const { name, email, password } = req.body;
+
   try {
-    const userExists = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (userExists.rows.length > 0) {
-      return res.status(409).json({
-         ok: false, 
-        errors: [{msg: "email already registered !!"}] 
-      });
+    //Register user in Cognito
+    const cmd = new SignUpCommand({
+      ClientId: process.env.COGNITO_CLIENT_ID,
+      Username: email,
+      Password: password,
+      UserAttributes: [
+        { Name: "email", Value: email },
+        { Name: "nickname", Value: name }
+      ],
+    });
+
+    const out = await cognito.send(cmd);
+    const cognitoSub = out?.UserSub || null;
+
+    if (cognitoSub) {
+      await db.insertUser(cognitoSub, name); //insert user in local DB
+      await db.insertUserScore(cognitoSub); //initialize user score
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userResult = await pool.query(
-      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [name, email, hashedPassword]
-    );
+    return res.json({ ok: true, message: 'Registered successfully', cognitoSub });
 
-    const userId = userResult.rows[0].id;
-
-  //initialize score 
-    await pool.query('INSERT INTO user_scores (user_id, score) VALUES ($1, 0)', [userId]);
-
-    return res.json({ ok: true, message: 'Registered successfully' });
   } catch (err) {
-    console.error('Register error:', err);
-    return res.status(500).json({ 
-      ok: false, 
-      errors: [{msg: 'Server error' }]
+    return res.status(400).json({
+      ok: false,
+      errors: [{ msg: err?.message || 'Register error' }]
     });
   }
 });
 
-//login 
-app.post(
-  "/api/auth/login",
-  csrfProtection,
-  loginValidation,
-  (req, res, next) => {
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        ok: false,
-        errors: errors.array().map(err => ({msg: err.msg}))
-      });
-    }
-
-    passport.authenticate("local", (err, user, info) => {
-      if (err) {
-        console.error("Passport auth error:", err);
-        return next(err);
-      }
-
-      if (!user) {
-        return res.status(401).json({
-          ok: false,
-          errors: [{ msg: info?.message || "Invalid credentials" }]
-        });
-      }
-
-      req.login(user, (err) => {
-        if (err) {
-          console.error("Login error:", err);
-          return next(err);
-        }
-        return res.json({
-          ok: true,
-          user: {
-            id: user.id,
-            name: user.name
-          }
-        });
-      });
-    })(req, res, next);
-  }
-);
-
-
-app.post('/api/auth/logout', (req, res, next) => {
-  req.logout({ keepSessionInfo: false }, (err) => {
-    if (err) {
-      console.error('Logout error:', err);
-      return res.status(500).json({
-        ok: false,
-        errors: [{ msg: 'Logout failed' }]
-      });
-    }
-
-    req.session.destroy((err) => {
-      if (err) {
-        console.error('Session destroy error:', err);
-        return res.status(500).json({
-          ok: false,
-          errors: [{ msg: 'Session destroy failed' }]
-        });
-      }
-      res.clearCookie("connect.sid", {
-        path: "/",
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax"
-      })
-
-      
-      return res.json({ ok: true });
+// LOGIN
+app.post('/api/auth/login', loginValidation, async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      ok: false,
+      errors: errors.array().map(err => ({ msg: err.msg }))
     });
-  });
-});
-
-
-// home / leaderboard
-app.get('/api/leaderboard', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT users.name, user_scores.score
-      FROM user_scores
-      JOIN users ON users.id = user_scores.user_id
-      ORDER BY user_scores.score DESC
-      LIMIT 5
-    `);
-    return res.json({ ok: true, rows: result.rows });
-  } catch (err) {
-    console.error('Leaderboard error:', err);
-    return res.status(500).json({ ok: false });
   }
-});
 
-//dashboard
-app.get('/api/dashboard', ensureAuthenticatedApi, async (req, res) => {
+  const { email, password } = req.body;
+
   try {
-    const scoreResult = await pool.query('SELECT score FROM user_scores WHERE user_id = $1', [req.user.id]);
+    const cmd = new InitiateAuthCommand({
+      AuthFlow: "USER_PASSWORD_AUTH",
+      ClientId: process.env.COGNITO_CLIENT_ID,
+      AuthParameters: { USERNAME: email, PASSWORD: password }
+    });
+
+    const result = await cognito.send(cmd);
+
+    if (!result?.AuthenticationResult) {
+      return res.status(401).json({
+        ok: false,
+        errors: [{ msg: 'Authentication failed' }]
+      });
+    }
+
+    // Return Cognito tokens to frontend
     return res.json({
       ok: true,
-      user: { id: req.user.id, name: req.user.name },
-      score: scoreResult.rows[0]?.score || 0
+      accessToken: result.AuthenticationResult.AccessToken,
+      idToken: result.AuthenticationResult.IdToken,
+      refreshToken: result.AuthenticationResult.RefreshToken,
+      expiresIn: result.AuthenticationResult.ExpiresIn
     });
+
   } catch (err) {
-    console.error('Dashboard error:', err);
+    return res.status(401).json({
+      ok: false,
+      errors: [{ msg: 'Invalid credentials' }]
+    });
+  }
+});
+
+// LOGOUT
+app.post('/api/auth/logout', async (req, res) => {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!token) return res.json({ ok: true });
+
+  try {
+    await cognito.send(new GlobalSignOutCommand({ AccessToken: token }));
+    return res.json({ ok: true });
+  } catch {
+    return res.json({ ok: true });
+  }
+});
+
+// LEADERBOARD
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const rows = await db.getLeaderboard(); // fetch top 5 scores from DB
+    return res.json({ ok: true, rows });
+  } catch (err) {
     return res.status(500).json({ ok: false });
   }
 });
 
-//game endpoints
-app.post('/api/game/start', csrfProtection, ensureAuthenticatedApi, (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ ok: false, message: 'Missing pokemon name' });
-  req.session.currentPokemon = name;
+// DASHBOARD
+app.get('/api/dashboard', requireAuth, async (req, res) => {
+  try {
+    const cognitoSub = req.user.sub;
+    const userData = await db.getUserDashboard(cognitoSub); // fetch user data + score
+
+    return res.json({
+      ok: true,
+      user: { id: cognitoSub, name: userData.name },
+      score: userData.score
+    });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+// FETCH POKEMON DATA
+app.get("/api/pokemon/:id", async (req, res) => {
+  const id = req.params.id.toLowerCase();
+
+  try {
+    const cached = await redis.get(`pokemon:${id}`);
+    if (cached) return res.json(JSON.parse(cached)); // return cached pokemon
+
+    const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+    if (!response.ok) return res.status(404).json({ error: "Pokemon not found" });
+
+    const data = await response.json();
+    await redis.set(`pokemon:${id}`, JSON.stringify(data), "EX", 86400); // cache for 1 day
+
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GAME START
+app.post('/api/game/start', requireAuth, async (req, res) => {
+  try {
+    const cognitoSub = req.user.sub;
+    const { name } = req.body;
+
+    if (!name) return res.status(400).json({ ok: false, message: 'Missing pokemon name' });
+
+    await redis.set(`pokemon:${cognitoSub}`, name); // store current pokemon in Redis
+    return res.json({ ok: true });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+// GAME GUESS
+app.post('/api/game/guess', requireAuth, async (req, res) => {
+  try {
+    const cognitoSub = req.user.sub;
+    const correct = await redis.get(`pokemon:${cognitoSub}`);
+    const guess = req.body.guess;
+    const pointsPerRound = 10;
+
+    if (!correct) return res.json({ correct: false });
+
+    if (guess === correct) {
+      const updatedScore = await db.updateScore(cognitoSub, pointsPerRound); // add points
+      await redis.del(`pokemon:${cognitoSub}`);
+      return res.json({ correct: true, points: updatedScore });
+    }
+
+    return res.json({ correct: false });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+// DELETE ACCOUNT
+app.post('/api/auth/delete', requireAuth, async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ ok: false, errors: [{ msg: "Password is required" }] });
+  }
+
+  const cognitoSub = req.user.sub;
+  const username = req.user.email;
+
+  // Verify password
+  try {
+    await cognito.send(new InitiateAuthCommand({
+      AuthFlow: "USER_PASSWORD_AUTH",
+      ClientId: process.env.COGNITO_CLIENT_ID,
+      AuthParameters: { USERNAME: username, PASSWORD: password }
+    }));
+  } catch {
+    return res.status(401).json({ ok: false, errors: [{ msg: 'Incorrect password' }] });
+  }
+
+  // Delete user from Cognito
+  try {
+    await cognito.send(new AdminDeleteUserCommand({
+      UserPoolId: process.env.COGNITO_USER_POOL_ID,
+      Username: username
+    }));
+  } catch (err) {
+    return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete Cognito user' }] });
+  }
+
+  // Delete user from database
+  try {
+    await db.deleteUser(cognitoSub);
+  } catch (err) {
+    return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete user from database' }] });
+  }
+
   return res.json({ ok: true });
 });
 
-//guess
-app.post('/api/game/guess', csrfProtection, ensureAuthenticatedApi, async (req, res) => {
-  const correct = req.session.currentPokemon;
-  const guess = req.body.guess;
 
-  if (!correct) return res.json({correct: false });
-
-  if (guess === correct) {
-    try {
-      const update = await pool.query(`
-        INSERT INTO user_scores (user_id, score)
-        VALUES ($1, 10)
-        ON CONFLICT (user_id)
-        DO UPDATE SET score = user_scores.score + 10
-        RETURNING score
-      `, [req.user.id]);
-
-      req.session.currentPokemon = null;
-      return res.json({ correct: true, points: update.rows[0].score });
-    } catch (err) {
-      console.error('Game guess update error:', err);
-      return res.status(500).json({ ok: false });
-    }
-  }
-
-  return res.json({ correct: false });
-});
-
-//delete app.delete???
-app.post('/api/auth/delete', csrfProtection, ensureAuthenticatedApi, async (req, res) => {
-  const { password, password2 } = req.body;
-  if (!password || !password2) return res.status(400).json({ 
-    ok: false,
-     errors: [{msg: "All fields are required"}]
-     });
-  if (password !== password2) return res.status(400).json({
-     ok: false, 
-     errors: [{msg: 'Passwords do not match'}]
-     });
-
-  try {
-    const userResult = await pool.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
-    if (userResult.rows.length === 0) return res.status(404).json({ ok: false ,
-      errors:[{msg: 'user not found'}]
-    });
-
-    const hashed = userResult.rows[0].password;
-    const isMatch = await bcrypt.compare(password, hashed);
-    if (!isMatch) return res.status(401).json({ ok: false,
-       errors: [{msg: 'Incorrect password' }]
-      });
-
-    // Delete user row CASCADE delete the scores
-    await pool.query('DELETE FROM users WHERE id = $1', [req.user.id]);
-
-    // logout and destroy session
-    req.logout({ keepSessionInfo: false }, (err) => {
-      if (err) {
-        console.error('Logout after delete error:', err);
-      }
-      req.session.destroy((err) => {
-        if (err) console.error('Session destroy after delete error:', err);
-        res.clearCookie("connect.sid", 
-          { path: "/", httpOnly: true, secure: true, sameSite: "lax" });
-res.clearCookie("connect.sid", { path: "/", httpOnly: true, secure: true, sameSite: "lax" });
-
-        return res.json({ ok: true });
-      });
-    });
-  } catch (err) {
-    console.error('Delete account error:', err);
-    return res.status(500).json({ ok: false,
-      errors: [{msg: 'server error !'}]
-    });
-  }
-});
-
+// STATIC FILES
 if (NODE_ENV === 'production') {
   const staticPath = path.join(__dirname, 'client', 'dist');
   app.use(express.static(staticPath));
   app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'client/dist', 'index.html'));
-});
-
+    res.sendFile(path.join(__dirname, 'client/dist/index.html'));
+  });
 }
 
-// global error handler
+// GLOBAL ERROR HANDLER
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err && err.stack ? err.stack : err);
-  if (err && err.code === 'EBADCSRFTOKEN') {
-    return res.status(403).json({
-       ok: false,
-       errors: [{msg: 'Invalid CSRF token' }]});
-  }
-  return res.status(500).json({
-     ok: false, 
-     errors: [{msg:'Server error'}] });
+  console.error('Unhandled error:', err?.stack || err);
+  return res.status(500).json({ ok: false, errors: [{ msg: 'Server error' }] });
 });
 
+//START SERVER
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT} (NODE_ENV=${NODE_ENV})`);
 });
