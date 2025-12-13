@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/authcontext";
+import pokemonNamesList from "../data/pokemonNames.json";
 
 export default function PokemonGame({ startingScore }) {
   const { accessToken } = useAuth(); // acess token fron auth context
@@ -9,7 +10,7 @@ export default function PokemonGame({ startingScore }) {
   const inputRef = useRef(null);
 
   // State Variables
-  const [pokemonNames, setPokemonNames] = useState([]); // all pokemon names for autocomplete 
+  const pokemonNames = pokemonNamesList; // all pokemon names for autocomplete 
   const [listVisible, setListVisible] = useState(false); // show/hide autocomplete
   const [listItems, setListItems] = useState([]); // filtered autocomplete itens
   const [result, setResult] = useState(""); // status message for guesses/loading
@@ -22,22 +23,6 @@ export default function PokemonGame({ startingScore }) {
   const [fullImage, setFullImage] = useState(null); // full resolution image of pokemon 
 
   const firstLoadRef = useRef(false); // make sure new pokemon is loaded only after auth
-
-  // load pokemon list of all pokemon names 
-  useEffect(() => {
-    async function loadList() {
-      try {
-        const res = await fetch("https://pokeapi.co/api/v2/pokemon?limit=386");
-        const data = await res.json();
-        // store only the names for autocomplete
-        setPokemonNames(data.results.map((p) => p.name));
-      } catch (err) {
-        console.error(err);
-        setResult("Error loading Pokémon list");
-      }
-    }
-    loadList();
-  }, []);
 
   // draw a pixelated version of the image
   function drawPixelated(img, pixelSize = 50) {
@@ -75,60 +60,59 @@ export default function PokemonGame({ startingScore }) {
 
   // start a new Round
   async function newPokemon() {
-    setGameReady(false);
-    setLoadingPokemon(true);
-    setServerReady(false);
-    setImageLoaded(false);
+  setGameReady(false);
+  setLoadingPokemon(true);
+  setServerReady(false);
+  setImageLoaded(false);
 
-    const id = Math.floor(Math.random() * 386) + 1;
+  try {
+    const res = await fetch("/api/game/next-pokemon", {
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+      }
+    });
 
-    try {
-      // fetch pokemon data from backend -- cached via Redis
-      const res = await fetch(`/api/pokemon/${id}`);
-      const data = await res.json();
-      const name = data.name;
-      setCurrentPokemon(name);
+    if (!res.ok) throw new Error("Failed to fetch Pokémon");
+    const data = await res.json();
 
-      // use official artwork 
-      const imgUrl = data.image || null;
-      if (!imgUrl) throw new Error("No image available");
+    setCurrentPokemon(data.name);
 
-      // Load img object
-      const img = new Image();
-      img.crossOrigin = "anonymous";
+    // load image
+    const img = new Image();
+    img.crossOrigin = "anonymous";
 
-      img.onload = () => {
-        setFullImage(img);
-        drawPixelated(img, 12); 
-        setImageLoaded(true);
-        setLoadingPokemon(false);
-      };
-
-      img.onerror = () => {
-        setResult("Failed to load image");
-      };
-
-      img.src = imgUrl;
-
-      // send to backend that the game round has started
-      const serverRes = await fetch("/api/game/start", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ name }),
-      });
-
-      if (!serverRes.ok) throw new Error("Server error");
-      setServerReady(true);
-    } catch (err) {
-      console.error(err);
-      setResult("Error loading Pokémon");
+    img.onload = () => {
+      setFullImage(img);
+      drawPixelated(img, 12);
+      setImageLoaded(true);
       setLoadingPokemon(false);
-    }
+    };
+
+    img.onerror = () => setResult("Failed to load image");
+
+    img.src = data.image;
+
+    // send to backend game start
+    const serverRes = await fetch("/api/game/start", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ name: data.name }),
+    });
+
+    if (!serverRes.ok) throw new Error("Server error");
+    setServerReady(true);
+
+  } catch (err) {
+    console.error(err);
+    setResult("Error loading Pokémon");
+    setLoadingPokemon(false);
   }
+}
+
  
   // Enable game when both image and server are ready 
   useEffect(() => {

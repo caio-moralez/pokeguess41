@@ -76,6 +76,8 @@ const registerValidation = [
 
 const loginValidation = validationCommon;
 
+
+
 // USER REGISTER
 app.post('/api/auth/register', registerValidation, async (req, res) => {
   const errors = validationResult(req);
@@ -216,76 +218,6 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
   }
 });
 
-// FETCH POKEMON DATA
-app.get("/api/pokemon/:id", async (req, res) => {
-  const id = req.params.id;
-
-  try {
-    const cacheKey = `pokemon:${id}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) return res.json(JSON.parse(cached));
-
-    const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
-    if (!response.ok)
-      return res.status(404).json({ error: "Pokemon not found" });
-
-    const data = await response.json();
-
-    const pokemon = {
-      id: data.id,
-      name: data.name,
-      image:
-        data.sprites.other["official-artwork"].front_default ??
-        data.sprites.front_default,
-      types: data.types.map(t => t.type.name)
-    };
-
-    await redis.set(cacheKey, JSON.stringify(pokemon), { EX: 86400 });
-
-    res.json(pokemon);
-  } catch (err) {
-    console.error("Pokemon route error:", err.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// GAME START
-app.post('/api/game/start', requireAuth, async (req, res) => {
-  try {
-    const cognitoSub = req.user.sub;
-    const { name } = req.body;
-
-    if (!name) return res.status(400).json({ ok: false, message: 'Missing pokemon name' });
-
-    await redis.set(`pokemon:${cognitoSub}`, name); // store current pokemon in Redis
-    return res.json({ ok: true });
-  } catch {
-    return res.status(401).json({ ok: false });
-  }
-});
-
-// GAME GUESS
-app.post('/api/game/guess', requireAuth, async (req, res) => {
-  try {
-    const cognitoSub = req.user.sub;
-    const correct = await redis.get(`pokemon:${cognitoSub}`);
-    const guess = req.body.guess;
-    const pointsPerRound = 10;
-
-    if (!correct) return res.json({ correct: false });
-
-    if (guess === correct) {
-      const updatedScore = await db.updateScore(cognitoSub, pointsPerRound); // add points
-      await redis.del(`pokemon:${cognitoSub}`);
-      return res.json({ correct: true, points: updatedScore });
-    }
-
-    return res.json({ correct: false });
-  } catch {
-    return res.status(401).json({ ok: false });
-  }
-});
-
 // DELETE ACCOUNT
 app.post('/api/auth/delete', requireAuth, async (req, res) => {
   const { password } = req.body;
@@ -327,6 +259,115 @@ app.post('/api/auth/delete', requireAuth, async (req, res) => {
   return res.json({ ok: true });
 });
 
+// GAME ENV
+
+// FETCH POKEAPI
+async function fetchPokemon(id) {
+  const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+  if (!response.ok) throw new Error("Pokemon not found");
+
+  const data = await response.json();
+
+  const image =
+    data.sprites?.other?.["official-artwork"]?.front_default ||
+    data.sprites?.front_default ||
+    null;
+
+  if (!image) throw new Error("No image available");
+
+  return {
+    id: data.id,
+    name: data.name,
+    image,
+  };
+}
+
+// FIL THE QUEUE -- 10 max
+
+const QUEUE_KEY = "pokemonQueue";
+const QUEUE_SIZE = 10;
+
+async function fillQueue() {
+  const queueLength = await redis.LLEN(QUEUE_KEY);
+
+  let length = queueLength;
+  while (length < QUEUE_SIZE) {
+    const id = Math.floor(Math.random() * 386) + 1;
+    try {
+      const pokemon = await fetchPokemon(id);
+      await redis.RPUSH(QUEUE_KEY, JSON.stringify(pokemon));
+      length++;
+    } catch (err) {
+      console.log("Skipping invalid Pokémon:", err.message);
+    }
+  }
+};
+
+// RETURN NEXT POKEMON 
+
+app.get("/api/game/next-pokemon", requireAuth, async (req, res) => {
+  try {
+    let pokemonData = await redis.LPOP(QUEUE_KEY);
+
+    // if no queue = fill 
+    while (!pokemonData) {
+      await fillQueue();
+      pokemonData = await redis.LPOP(QUEUE_KEY);
+    }
+
+    // fill the queue on background
+    fillQueue().catch(console.error);
+
+    res.json(JSON.parse(pokemonData));
+  } catch (err) {
+    console.error("Error fetching next Pokémon:", err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+// INIT QUEUE WEN SERVER IS ON 
+fillQueue().catch(err =>
+  console.error("Failed to initialize Pokémon queue:", err)
+);
+
+// GAME START
+app.post('/api/game/start', requireAuth, async (req, res) => {
+  try {
+    const cognitoSub = req.user.sub;
+    const { name } = req.body;
+
+    if (!name) return res.status(400).json({ ok: false, message: 'Missing pokemon name' });
+
+    await redis.set(`pokemon:${cognitoSub}`, name); // store current pokemon in Redis
+    return res.json({ ok: true });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+// GAME GUESS
+app.post('/api/game/guess', requireAuth, async (req, res) => {
+  try {
+    const cognitoSub = req.user.sub;
+    const correct = await redis.get(`pokemon:${cognitoSub}`);
+    const guess = req.body.guess;
+    const pointsPerRound = 10;
+
+    if (!correct) return res.json({ correct: false });
+
+    if (guess === correct) {
+      const updatedScore = await db.updateScore(cognitoSub, pointsPerRound); // add points
+      await redis.del(`pokemon:${cognitoSub}`);
+      return res.json({ correct: true, points: updatedScore });
+    }
+
+    return res.json({ correct: false });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+
+
 
 // STATIC FILES
 if (NODE_ENV === 'production') {
@@ -342,6 +383,7 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error:', err?.stack || err);
   return res.status(500).json({ ok: false, errors: [{ msg: 'Server error' }] });
 });
+
 
 //START SERVER
 app.listen(PORT, () => {
