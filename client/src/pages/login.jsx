@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 export default function Login() {
   const { addNotification } = useNotification();
   const navigate = useNavigate();
-  const { setAuthenticated, setAccessToken } = useAuth(); 
+  const { setAuthenticated, setAccessToken, setIdToken } = useAuth(); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
 
