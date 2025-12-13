@@ -14,7 +14,8 @@ const {
   InitiateAuthCommand,
   AdminDeleteUserCommand,
   GlobalSignOutCommand,
-  AdminConfirmSignUpCommand
+  AdminConfirmSignUpCommand,
+  ListUsersCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 
 // Midleware to protect routes that require authentication
@@ -221,42 +222,60 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 // DELETE ACCOUNT
 app.post('/api/auth/delete', requireAuth, async (req, res) => {
   const { password } = req.body;
+  const cognitoSub = req.user.sub;
+
   if (!password) {
     return res.status(400).json({ ok: false, errors: [{ msg: "Password is required" }] });
   }
 
-  const cognitoSub = req.user.sub;
-  const username = req.user.email;
-
-  // Verify password
   try {
-    await cognito.send(new InitiateAuthCommand({
-      AuthFlow: "USER_PASSWORD_AUTH",
-      ClientId: process.env.COGNITO_CLIENT_ID,
-      AuthParameters: { USERNAME: username, PASSWORD: password }
-    }));
-  } catch {
-    return res.status(401).json({ ok: false, errors: [{ msg: 'Incorrect password' }] });
-  }
-
-  // Delete user from Cognito
-  try {
-    await cognito.send(new AdminDeleteUserCommand({
+    // List user in Cognito by sub
+    const listUsers = await cognito.send(new ListUsersCommand({
       UserPoolId: process.env.COGNITO_USER_POOL_ID,
-      Username: username
+      Filter: `sub = "${cognitoSub}"`,
+      Limit: 1
     }));
-  } catch (err) {
-    return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete Cognito user' }] });
-  }
 
-  // Delete user from database
-  try {
-    await db.deleteUser(cognitoSub);
-  } catch (err) {
-    return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete user from database' }] });
-  }
+    if (!listUsers.Users || listUsers.Users.length === 0) {
+      return res.status(404).json({ ok: false, errors: [{ msg: "User not found" }] });
+    }
 
-  return res.json({ ok: true });
+    const username = listUsers.Users[0].Username;
+
+    // Verify password
+    try {
+      await cognito.send(new InitiateAuthCommand({
+        AuthFlow: "USER_PASSWORD_AUTH",
+        ClientId: process.env.COGNITO_CLIENT_ID,
+        AuthParameters: { USERNAME: username, PASSWORD: password }
+      }));
+    } catch {
+      return res.status(401).json({ ok: false, errors: [{ msg: 'Incorrect password' }] });
+    }
+
+    // Delete user from Cognito
+    try {
+      await cognito.send(new AdminDeleteUserCommand({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        Username: username
+      }));
+    } catch (err) {
+      return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete Cognito user' }] });
+    }
+
+    // Delete user from database
+    try {
+      await db.deleteUser(cognitoSub);
+    } catch (err) {
+      return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete user from database' }] });
+    }
+
+    return res.json({ ok: true });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, errors: [{ msg: 'Server error' }] });
+  }
 });
 
 // GAME ENV
