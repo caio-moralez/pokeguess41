@@ -5,7 +5,7 @@ import { useNotification } from "../context/notificationContext";
 
 export default function DeleteAccount() {
   const { addNotification } = useNotification();
-  const { authenticated, setAuthenticated, accessToken } = useAuth(); 
+  const { authenticated, setAuthenticated, accessToken, idToken } = useAuth(); 
   const [formData, setFormData] = useState({
     password: "",
     passwordMatchingCheck: "",
@@ -38,7 +38,7 @@ export default function DeleteAccount() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${accessToken}`, 
+          "Authorization": `Bearer ${idToken}`, 
         },
         body: JSON.stringify({ password: formData.password }),
       });

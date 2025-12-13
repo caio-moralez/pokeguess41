@@ -15,7 +15,6 @@ const {
   AdminDeleteUserCommand,
   GlobalSignOutCommand,
   AdminConfirmSignUpCommand,
-  ListUsersCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 
 // Midleware to protect routes that require authentication
@@ -222,7 +221,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 // DELETE ACCOUNT
 app.post('/api/auth/delete', requireAuth, async (req, res) => {
   const { password } = req.body;
-  const username = req.user.email; 
+  const username = req.user.username; 
   const cognitoSub = req.user.sub;
 
   if (!password) {

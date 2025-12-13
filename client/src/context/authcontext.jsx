@@ -5,6 +5,7 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [accessToken, setAccessToken] = useState(null);
+  const [idToken, setIdToken] = useState(null);
 
   useEffect(() => {
     async function checkAuth() {
@@ -22,10 +23,12 @@ export function AuthProvider({ children }) {
         } else {
           setAuthenticated(false);
           setAccessToken(null);
+          setIdToken(null);
         }
       } catch {
         setAuthenticated(false);
         setAccessToken(null);
+        setIdToken(null);
       }
     }
 
@@ -46,11 +49,13 @@ export function AuthProvider({ children }) {
     } finally {
       setAuthenticated(false);
       setAccessToken(null);
+      setIdToken(null);
     }
   }
 
   return (
-    <AuthContext.Provider value={{ authenticated, setAuthenticated, accessToken, setAccessToken, logout }}>
+    <AuthContext.Provider value={{ authenticated, setAuthenticated, 
+    accessToken, setAccessToken, idToken, setIdToken, logout }}>
       {children}
     </AuthContext.Provider>
   );

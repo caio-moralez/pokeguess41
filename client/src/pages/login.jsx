@@ -40,6 +40,7 @@ export default function Login() {
       }
 
       setAccessToken(data.accessToken);
+      setIdToken(data.idToken)
       setAuthenticated(true);
       addNotification({ type: "success", message: "Login successful!" });
       navigate("/dashboard");
