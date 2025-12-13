@@ -40,6 +40,7 @@ export default function Register() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          passwordMatchingCheck: formData.passwordMatchingCheck,
         }),
       });
 
