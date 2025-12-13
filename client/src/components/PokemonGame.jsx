@@ -90,11 +90,7 @@ export default function PokemonGame({ startingScore }) {
       setCurrentPokemon(name);
 
       // use official artwork 
-      const imgUrl =
-        (data.sprites?.other?.["official-artwork"]?.front_default) ||
-        data.sprites?.front_default ||
-        null;
-
+      const imgUrl = data.image || null;
       if (!imgUrl) throw new Error("No image available");
 
       // Load img object
