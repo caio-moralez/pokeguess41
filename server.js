@@ -13,7 +13,8 @@ const {
   SignUpCommand,
   InitiateAuthCommand,
   AdminDeleteUserCommand,
-  GlobalSignOutCommand
+  GlobalSignOutCommand,
+  AdminConfirmSignUpCommand
 } = require('@aws-sdk/client-cognito-identity-provider');
 
 // Midleware to protect routes that require authentication
@@ -88,8 +89,8 @@ app.post('/api/auth/register', registerValidation, async (req, res) => {
   const { name, email, password } = req.body;
 
   try {
-    //Register user in Cognito
-    const cmd = new SignUpCommand({
+    // 1️⃣ Create user in Cognito
+    const signUpCmd = new SignUpCommand({
       ClientId: process.env.COGNITO_CLIENT_ID,
       Username: email,
       Password: password,
@@ -99,23 +100,35 @@ app.post('/api/auth/register', registerValidation, async (req, res) => {
       ],
     });
 
-    const out = await cognito.send(cmd);
+    const out = await cognito.send(signUpCmd);
+
+    // AUTO CONFIRM USER
+    await cognito.send(new AdminConfirmSignUpCommand({
+      UserPoolId: process.env.COGNITO_USER_POOL_ID,
+      Username: email
+    }));
+
     const cognitoSub = out?.UserSub || null;
 
     if (cognitoSub) {
-      await db.insertUser(cognitoSub, name); //insert user in local DB
-      await db.insertUserScore(cognitoSub); //initialize user score
+      await db.insertUser(cognitoSub, name);
+      await db.insertUserScore(cognitoSub);
     }
 
-    return res.json({ ok: true, message: 'Registered successfully', cognitoSub });
+    return res.json({
+      ok: true,
+      message: 'Registered and successfully'
+    });
 
   } catch (err) {
+    console.error(err);
     return res.status(400).json({
       ok: false,
       errors: [{ msg: err?.message || 'Register error' }]
     });
   }
 });
+
 
 // LOGIN
 app.post('/api/auth/login', loginValidation, async (req, res) => {
