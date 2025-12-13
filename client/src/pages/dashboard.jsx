@@ -37,7 +37,7 @@ export default function Dashboard() {
         }
 
         setUser(data.user?.name || "User");
-        setScore(data.score || 0);
+        setScore(data.score );
       } catch (err) {
         console.error("Erro no dashboard:", err);
         navigate("/login", { replace: true });

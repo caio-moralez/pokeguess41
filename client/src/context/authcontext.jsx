@@ -12,7 +12,6 @@ export function AuthProvider({ children }) {
         setAuthenticated(false);
         return;
       }
-
       try {
         const res = await fetch("/api/dashboard", {
           headers: { "Authorization": `Bearer ${accessToken}` },

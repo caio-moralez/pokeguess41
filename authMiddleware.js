@@ -39,7 +39,7 @@ module.exports = async function requireAuth(req, res, next) {
 
     const pems = await getPems();
     const pem = pems[decoded.header.kid];
-    if (!pem) return res.status(401).json({ ok: false, errors: [{ msg: "Invalid token key" }] });
+    if (!pem) return res.status(401).json({ ok: false, errors: [{ msg: "Invalid token" }] });
 
     jwt.verify(token, pem, { algorithms: ["RS256"], issuer: `https://cognito-idp.${process.env.COGNITO_REGION}.amazonaws.com/${process.env.COGNITO_USER_POOL_ID}` }, (err, payload) => {
       if (err) {
