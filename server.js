@@ -221,49 +221,33 @@ app.get("/api/pokemon/:id", async (req, res) => {
   const id = req.params.id;
 
   try {
-    console.log("Fetch Pokemon:", id);
-
-    // Redis cache
-    const cached = await redis.get(`pokemon:${id}`);
-    if (cached) {
-      console.log("Cache HIT");
-      return res.json(JSON.parse(cached));
-    }
-
-    console.log(" Cache miss calling PokeAPI");
+    const cacheKey = `pokemon:${id}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return res.json(JSON.parse(cached));
 
     const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+    if (!response.ok)
+      return res.status(404).json({ error: "Pokemon not found" });
 
-    if (!response.ok) {
-      console.error(" PokeAPI error:", response.status);
-      return res.status(502).json({ error: "PokeAPI unavailable" });
-    }
-
-    // Parse JSON
     const data = await response.json();
 
-    // Hard Validation
-    if (!data?.sprites) {
-      console.error("Invalid Pokémon payload");
-      return res.status(500).json({ error: "Invalid Pokémon data" });
-    }
+    const pokemon = {
+      id: data.id,
+      name: data.name,
+      image:
+        data.sprites.other["official-artwork"].front_default ??
+        data.sprites.front_default,
+      types: data.types.map(t => t.type.name)
+    };
 
-    await redis.set(
-      `pokemon:${id}`,
-      JSON.stringify(data),
-      "EX",
-      86400 // 1 day
-    );
+    await redis.set(cacheKey, JSON.stringify(pokemon), { EX: 86400 });
 
-    console.log("Pokemon cached");
-    return res.json(data);
-
+    res.json(pokemon);
   } catch (err) {
-    console.error("/api/pokemon error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("Pokemon route error:", err.message);
+    res.status(500).json({ error: "Server error" });
   }
 });
-
 
 // GAME START
 app.post('/api/game/start', requireAuth, async (req, res) => {
