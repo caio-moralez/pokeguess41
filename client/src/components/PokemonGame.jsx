@@ -95,7 +95,11 @@ export default function PokemonGame({ startingScore }) {
         data.sprites?.front_default ||
         null;
 
-      if (!imgUrl) throw new Error("No image available");
+           if (!imgUrl) {
+        console.warn("No image for pokemon", name);
+        setLoadingPokemon(false);
+        return newPokemon(); 
+}
 
       // Load img object
       const img = new Image();
