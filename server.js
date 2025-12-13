@@ -221,7 +221,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 // DELETE ACCOUNT
 app.post('/api/auth/delete', requireAuth, async (req, res) => {
   const { password } = req.body;
-  const username = req.user.username; 
+  const username = req.user["cognito:username"] || req.user.email;
   const cognitoSub = req.user.sub;
 
   if (!password) {
