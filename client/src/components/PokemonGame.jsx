@@ -95,11 +95,7 @@ export default function PokemonGame({ startingScore }) {
         data.sprites?.front_default ||
         null;
 
-           if (!imgUrl) {
-        console.warn("No image for pokemon", name);
-        setLoadingPokemon(false);
-        return newPokemon(); 
-}
+      if (!imgUrl) throw new Error("No image available");
 
       // Load img object
       const img = new Image();
@@ -219,7 +215,7 @@ export default function PokemonGame({ startingScore }) {
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
-  // load first pokemon after user is authenticated 
+  // load first pokemon after user is authenticated
   useEffect(() => {
     if (!firstLoadRef.current && accessToken) {
       firstLoadRef.current = true;
