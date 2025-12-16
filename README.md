@@ -185,7 +185,7 @@ In production, the React frontend is built and served by the Express server:
 
 ## Author
 
-Name:
+Name: Caio Moralez
 
 ---
 
