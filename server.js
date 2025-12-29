@@ -6,6 +6,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { body, validationResult } = require('express-validator');
 const redis = require('./redisClient');
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./swagger");
+
 
 // AWS COGNITO SDK IMPORTS
 const {
@@ -44,6 +47,8 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 
 // VALIDATION RULES
 const validationCommon = [
@@ -76,6 +81,42 @@ const registerValidation = [
 
 const loginValidation = validationCommon;
 
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - passwordMatchingCheck
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Ash Ketchum
+ *               email:
+ *                 type: string
+ *                 example: ash@email.com
+ *               password:
+ *                 type: string
+ *                 example: Strong@123
+ *               passwordMatchingCheck:
+ *                 type: string
+ *                 example: Strong@123
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Validation or registration error
+ */
 
 
 // USER REGISTER
@@ -117,7 +158,7 @@ app.post('/api/auth/register', registerValidation, async (req, res) => {
       await db.insertUserScore(cognitoSub);
     }
 
-    return res.json({
+    return res.status(201).json({
       ok: true,
       message: 'Registered and successfully'
     });
@@ -130,6 +171,37 @@ app.post('/api/auth/register', registerValidation, async (req, res) => {
     });
   }
 });
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Authenticate user
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: ash@email.com
+ *               password:
+ *                 type: string
+ *                 example: Strong@123
+ *     responses:
+ *       200:
+ *         description: Authentication successful, tokens returned
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Invalid credentials
+ */
 
 
 // LOGIN
@@ -161,7 +233,7 @@ app.post('/api/auth/login', loginValidation, async (req, res) => {
     }
 
     // Return Cognito tokens to frontend
-    return res.json({
+    return res.status(200).json({
       ok: true,
       accessToken: result.AuthenticationResult.AccessToken,
       idToken: result.AuthenticationResult.IdToken,
@@ -177,6 +249,20 @@ app.post('/api/auth/login', loginValidation, async (req, res) => {
   }
 });
 
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Logout user
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User logged out successfully
+ */
+
 // LOGOUT
 app.post('/api/auth/logout', async (req, res) => {
   const authHeader = req.headers.authorization || "";
@@ -186,37 +272,42 @@ app.post('/api/auth/logout', async (req, res) => {
 
   try {
     await cognito.send(new GlobalSignOutCommand({ AccessToken: token }));
-    return res.json({ ok: true });
+    return res.status(200).json({ ok: true });
   } catch {
-    return res.json({ ok: true });
+    return res.status(200).json({ ok: true });
   }
 });
 
-// LEADERBOARD
-app.get('/api/leaderboard', async (req, res) => {
-  try {
-    const rows = await db.getLeaderboard(); // fetch top 5 scores from DB
-    return res.json({ ok: true, rows });
-  } catch (err) {
-    return res.status(500).json({ ok: false });
-  }
-});
-
-// DASHBOARD
-app.get('/api/dashboard', requireAuth, async (req, res) => {
-  try {
-    const cognitoSub = req.user.sub;
-    const userData = await db.getUserDashboard(cognitoSub); // fetch user data + score
-
-    return res.json({
-      ok: true,
-      user: { id: cognitoSub, name: userData.name },
-      score: userData.score
-    });
-  } catch {
-    return res.status(401).json({ ok: false });
-  }
-});
+/**
+ * @swagger
+ * /api/auth/delete:
+ *   post:
+ *     summary: Delete authenticated user account
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 example: Strong@123
+ *     responses:
+ *       204:
+ *         description: User account deleted successfully
+ *       400:
+ *         description: Password not provided
+ *       401:
+ *         description: Incorrect password or unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 
 // DELETE ACCOUNT
 app.post('/api/auth/delete', requireAuth, async (req, res) => {
@@ -256,8 +347,64 @@ app.post('/api/auth/delete', requireAuth, async (req, res) => {
     return res.status(500).json({ ok: false, errors: [{ msg: 'Failed to delete user from database' }] });
   }
 
-  return res.json({ ok: true });
+  return res.status(204).send();
 });
+
+/**
+ * @swagger
+ * /api/leaderboard:
+ *   get:
+ *     summary: Retrieve leaderboard ranking
+ *     tags: [Leaderboard]
+ *     responses:
+ *       200:
+ *         description: Leaderboard retrieved successfully
+ *       500:
+ *         description: Internal server error
+ */
+
+// LEADERBOARD
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const rows = await db.getLeaderboard(); // fetch top 5 scores from DB
+    return res.json({ ok: true, rows });
+  } catch (err) {
+    return res.status(500).json({ ok: false });
+  }
+});
+
+/**
+ * @swagger
+ * /api/dashboard:
+ *   get:
+ *     summary: Retrieve authenticated user dashboard data
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard data returned
+ *       401:
+ *         description: Unauthorized or invalid token
+ */
+
+// DASHBOARD
+app.get('/api/dashboard', requireAuth, async (req, res) => {
+  try {
+    const cognitoSub = req.user.sub;
+    const userData = await db.getUserDashboard(cognitoSub); // fetch user data + score
+
+    return res.status(200).json({
+      ok: true,
+      user: { id: cognitoSub, name: userData.name },
+      score: userData.score
+    });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+
 
 // GAME ENV
 
@@ -303,8 +450,24 @@ async function fillQueue() {
   }
 };
 
-// RETURN NEXT POKEMON 
 
+/**
+ * @swagger
+ * /api/game/next-pokemon:
+ *   get:
+ *     summary: Get next Pokémon for the game
+ *     tags: [Game]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Pokémon returned successfully
+ *       500:
+ *         description: Server error
+ */
+
+
+// RETURN NEXT POKEMON 
 app.get("/api/game/next-pokemon", requireAuth, async (req, res) => {
   try {
     let pokemonData = await redis.LPOP(QUEUE_KEY);
@@ -318,7 +481,7 @@ app.get("/api/game/next-pokemon", requireAuth, async (req, res) => {
     // fill the queue on background
     fillQueue().catch(console.error);
 
-    res.json(JSON.parse(pokemonData));
+    res.status(200).json(JSON.parse(pokemonData));
   } catch (err) {
     console.error("Error fetching next Pokémon:", err.message);
     res.status(500).json({ error: "Server error" });
@@ -329,6 +492,36 @@ fillQueue().catch(err =>
   console.error("Failed to initialize Pokémon queue:", err)
 );
 
+
+/**
+ * @swagger
+ * /api/game/start:
+ *   post:
+ *     summary: Start a new game round
+ *     tags: [Game]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: pikachu
+ *     responses:
+ *       201:
+ *         description: Game started successfully
+ *       400:
+ *         description: Missing Pokémon name
+ *       401:
+ *         description: Unauthorized
+ */
+
 // GAME START
 app.post('/api/game/start', requireAuth, async (req, res) => {
   try {
@@ -338,11 +531,39 @@ app.post('/api/game/start', requireAuth, async (req, res) => {
     if (!name) return res.status(400).json({ ok: false, message: 'Missing pokemon name' });
 
     await redis.set(`pokemon:${cognitoSub}`, name); // store current pokemon in Redis
-    return res.json({ ok: true });
+    return res.status(201).json({ ok: true });
   } catch {
     return res.status(401).json({ ok: false });
   }
 });
+
+
+/**
+ * @swagger
+ * /api/game/guess:
+ *   post:
+ *     summary: Submit a Pokémon guess
+ *     tags: [Game]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - guess
+ *             properties:
+ *               guess:
+ *                 type: string
+ *                 example: pikachu
+ *     responses:
+ *       200:
+ *         description: Guess result returned
+ *       401:
+ *         description: Unauthorized
+ */
 
 // GAME GUESS
 app.post('/api/game/guess', requireAuth, async (req, res) => {
@@ -357,10 +578,10 @@ app.post('/api/game/guess', requireAuth, async (req, res) => {
     if (guess === correct) {
       const updatedScore = await db.updateScore(cognitoSub, pointsPerRound); // add points
       await redis.del(`pokemon:${cognitoSub}`);
-      return res.json({ correct: true, points: updatedScore });
+      return res.status(200).json({ correct: true, points: updatedScore });
     }
 
-    return res.json({ correct: false });
+    return res.status(200).json({ correct: false });
   } catch {
     return res.status(401).json({ ok: false });
   }
