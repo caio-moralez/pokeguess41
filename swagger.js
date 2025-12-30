@@ -10,7 +10,7 @@ const options = {
     },
     servers: [
       {
-        url: "https://pokeguess41.render.com",
+        url: "https://pokeguess41.onrender.com",
         description: "Production (Render)",
       },
     ],
