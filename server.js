@@ -48,8 +48,20 @@ app.options('*', cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  "/api/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  })
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  })
+);
 
 
 // VALIDATION RULES
