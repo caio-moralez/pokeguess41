@@ -5,6 +5,8 @@ PokeGuess is a full-stack web game where authenticated users guess Pokémon name
 Live application:
 [https://pokeguess41.onrender.com/](https://pokeguess41.onrender.com/)
 
+###(Temporarily offline due to database expiration at render)
+
 ---
 
 ## Overview
