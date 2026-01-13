@@ -6,6 +6,8 @@ O projeto utiliza autenticação com AWS Cognito, cache e filas com Redis, integ
 A aplicação está em produção e pode ser acessada em:
 [https://pokeguess41.onrender.com/](https://pokeguess41.onrender.com/)
 
+### (temporariamente fora do ar pela validade do banco de dados no render)
+
 ---
 
 ## Visão Geral
